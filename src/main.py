@@ -32,24 +32,28 @@ app = FastAPI(lifespan=lifespan)
 
 @app.post("/webhook")
 async def webhook(request: Request):
-    body = await request.json()
-    message = body.get("message") or body.get("edited_message")
-    if not message:
-        return Response(status_code=200)
-
-    chat_id = str(message.get("chat", {}).get("id", ""))
-    text = message.get("text", "").strip()
-
-    if not _bot.is_authorized(chat_id) or not text:
-        return Response(status_code=200)
-
     try:
-        reply = _claude.chat(text)
-    except Exception as e:
-        reply = f"錯誤：{type(e).__name__}: {e}"
+        body = await request.json()
+        message = body.get("message") or body.get("edited_message")
+        if not message or _bot is None or _claude is None:
+            return Response(status_code=200)
 
-    try:
-        _bot.send_message(chat_id=chat_id, text=reply)
+        chat_id = str(message.get("chat", {}).get("id", ""))
+        text = message.get("text", "").strip()
+
+        if not _bot.is_authorized(chat_id) or not text:
+            return Response(status_code=200)
+
+        try:
+            reply = _claude.chat(text)
+        except Exception as e:
+            reply = f"錯誤：{type(e).__name__}: {e}"
+
+        try:
+            _bot.send_message(chat_id=chat_id, text=reply)
+        except Exception:
+            pass
+
     except Exception:
         pass
 
