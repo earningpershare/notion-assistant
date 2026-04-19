@@ -24,7 +24,7 @@ def test_is_authorized_int_chat_id(bot):
 
 
 def test_send_message(bot):
-    bot._http.post.return_value = MagicMock(status_code=200)
+    bot._http.post.return_value = MagicMock(raise_for_status=MagicMock())
     bot.send_message(chat_id="12345", text="Hello")
     bot._http.post.assert_called_once_with(
         "https://api.telegram.org/botfake-token/sendMessage",
@@ -33,9 +33,20 @@ def test_send_message(bot):
 
 
 def test_set_webhook(bot):
-    bot._http.post.return_value = MagicMock(status_code=200)
+    bot._http.post.return_value = MagicMock(raise_for_status=MagicMock())
     bot.set_webhook("https://example.com/webhook")
     bot._http.post.assert_called_once_with(
         "https://api.telegram.org/botfake-token/setWebhook",
         json={"url": "https://example.com/webhook"},
     )
+
+
+def test_send_message_raises_on_http_error(bot):
+    from httpx import HTTPStatusError, Request, Response
+    bot._http.post.return_value = MagicMock(
+        raise_for_status=MagicMock(side_effect=HTTPStatusError(
+            "error", request=MagicMock(), response=MagicMock(status_code=401)
+        ))
+    )
+    with pytest.raises(HTTPStatusError):
+        bot.send_message(chat_id="12345", text="Hello")
