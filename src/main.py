@@ -3,20 +3,20 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
 from src.notion_tools import NotionTools
-from src.claude_client import ClaudeClient
+from src.gemini_client import GeminiClient
 from src.telegram_bot import TelegramBot
 
 load_dotenv()
 
 _bot: TelegramBot = None
-_claude: ClaudeClient = None
+_claude: GeminiClient = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _bot, _claude
     notion = NotionTools(token=os.environ["NOTION_TOKEN"])
-    _claude = ClaudeClient(api_key=os.environ["ANTHROPIC_API_KEY"], notion=notion)
+    _claude = GeminiClient(api_key=os.environ["GEMINI_API_KEY"], notion=notion)
     _bot = TelegramBot(
         token=os.environ["TELEGRAM_TOKEN"],
         owner_chat_id=os.environ["TELEGRAM_OWNER_CHAT_ID"],
