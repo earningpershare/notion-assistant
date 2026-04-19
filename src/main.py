@@ -46,8 +46,8 @@ async def webhook(request: Request):
 
         try:
             reply = _claude.chat(text)
-        except Exception as e:
-            reply = f"錯誤：{type(e).__name__}: {e}"
+        except Exception:
+            reply = "AI 回應失敗，請稍後再試"
 
         try:
             _bot.send_message(chat_id=chat_id, text=reply)
