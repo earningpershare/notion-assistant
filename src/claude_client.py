@@ -18,13 +18,15 @@ class ClaudeClient:
         self._notion = notion
         self.history: list[dict] = []
 
+    def _trim_history(self) -> None:
+        if len(self.history) > 40:
+            self.history = self.history[-40:]
+
     def chat(self, user_message: str) -> str:
         self.history.append({"role": "user", "content": user_message})
+        self._trim_history()
 
         while True:
-            if len(self.history) > 40:
-                self.history = self.history[-40:]
-
             response = self._anthropic.messages.create(
                 model="claude-sonnet-4-6",
                 max_tokens=4096,
@@ -43,19 +45,23 @@ class ClaudeClient:
                 text = next(
                     (b.text for b in response.content if b.type == "text"), ""
                 )
-                self.history.append({"role": "assistant", "content": text})
-                if len(self.history) > 40:
-                    self.history = self.history[-40:]
-                return text
+                self.history.append({"role": "assistant", "content": text or "(操作已完成)"})
+                self._trim_history()
+                return text or "(操作已完成)"
+
+            if response.stop_reason != "tool_use":
+                text = next(
+                    (b.text for b in response.content if b.type == "text"), ""
+                )
+                self.history.append({"role": "assistant", "content": text or f"(stop_reason: {response.stop_reason})"})
+                self._trim_history()
+                return text or f"(stop_reason: {response.stop_reason})"
 
             tool_results = []
             for block in response.content:
                 if block.type != "tool_use":
                     continue
-                # In production, block.name is a str from the Anthropic SDK.
-                # In unit tests that use MagicMock(name=...), the name kwarg sets
-                # _mock_name rather than a real .name attribute, so we fall back.
-                name = block.name if isinstance(block.name, str) else block._mock_name
+                name = block.name
                 result = self._dispatch(name, block.input)
                 tool_results.append(
                     {
@@ -65,8 +71,14 @@ class ClaudeClient:
                     }
                 )
 
-            self.history.append({"role": "assistant", "content": response.content})
+            try:
+                content = [b.model_dump() for b in response.content]
+            except AttributeError:
+                content = response.content  # fallback for tests
+            self.history.append({"role": "assistant", "content": content})
+            self._trim_history()
             self.history.append({"role": "user", "content": tool_results})
+            self._trim_history()
 
     def _dispatch(self, name: str, inputs: dict) -> str:
         tool_fn = getattr(self._notion, name, None)

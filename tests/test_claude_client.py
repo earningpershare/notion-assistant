@@ -42,8 +42,9 @@ def test_chat_trims_history_to_40_items(client):
 
 
 def test_chat_handles_tool_use(client, mock_notion):
-    tool_use_block = MagicMock(type="tool_use", id="tu-1", name="search_notion",
-                                input={"query": "會議"})
+    tool_use_block = MagicMock(type="tool_use", id="tu-1")
+    tool_use_block.name = "search_notion"
+    tool_use_block.input = {"query": "會議"}
     text_block = MagicMock(type="text", text="找到了：測試頁面")
 
     client._anthropic.messages.create.side_effect = [
@@ -69,7 +70,9 @@ def test_chat_dispatches_all_tools(client, mock_notion):
     ]
     for name, inputs in tool_names:
         getattr(mock_notion, name).return_value = "ok"
-        tool_block = MagicMock(type="tool_use", id="tu-x", name=name, input=inputs)
+        tool_block = MagicMock(type="tool_use", id="tu-x")
+        tool_block.name = name
+        tool_block.input = inputs
         client._anthropic.messages.create.side_effect = [
             MagicMock(stop_reason="tool_use", content=[tool_block]),
             MagicMock(stop_reason="end_turn", content=[MagicMock(type="text", text="done")]),
@@ -77,3 +80,27 @@ def test_chat_dispatches_all_tools(client, mock_notion):
         client.history = []
         reply = client.chat("test")
         assert reply == "done"
+
+
+def test_chat_handles_max_tokens(client):
+    client._anthropic.messages.create.return_value = MagicMock(
+        stop_reason="max_tokens",
+        content=[MagicMock(type="text", text="partial")]
+    )
+    reply = client.chat("test")
+    assert reply == "partial"
+    assert len(client.history) == 2
+
+
+def test_dispatch_unknown_tool(client):
+    # Replace notion with a spec-constrained mock so getattr returns None for unknown tools
+    from unittest.mock import MagicMock
+    client._notion = MagicMock(spec=[])  # no attributes allowed
+    result = client._dispatch("nonexistent_tool", {})
+    assert "未知工具" in result
+
+
+def test_dispatch_tool_exception(client, mock_notion):
+    mock_notion.search_notion.side_effect = RuntimeError("API down")
+    result = client._dispatch("search_notion", {"query": "x"})
+    assert "工具執行失敗" in result
